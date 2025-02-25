@@ -1,25 +1,28 @@
-import java.util.*;
-import java.rmi.*;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+import java.util.Scanner;
 
 public class Client {
-    private static Scanner input_val;
-
     public static void main(String[] args) {
-        try{
-            System.out.println("Finding");
-            // khai bao doi tuong c tim duoc o registry
-            ClientInterface c = (ClientInterface) Naming.lookup("rmi://192.168.0.102/Client");
-            // Nhap 2 gia tri x va y
-            input_val = new Scanner(System.in);
-            System.out.println("Enter X:");
+        try {
+            // Kết nối tới registry trên server
+            Registry registry = LocateRegistry.getRegistry("192.168.0.102", 1099);
+
+            // Tìm kiếm đối tượng đã đăng ký với tên "Client"
+            ClientInterface c = (ClientInterface) registry.lookup("Client");
+
+            // Nhập giá trị x và y từ bàn phím
+            Scanner input_val = new Scanner(System.in);
+            System.out.print("Enter X: ");
             int x = input_val.nextInt();
-            System.out.println("Enter Y:");
+            System.out.print("Enter Y: ");
             int y = input_val.nextInt();
-            // hien thi ket qua
-            System.out.println("Result:" + c.addNumber(x, y));
-        }
-        catch (Exception e){
-            System.out.println("Error:" + e);
+
+            // Hiển thị kết quả
+            System.out.println("Result: " + c.addNumber(x, y));
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

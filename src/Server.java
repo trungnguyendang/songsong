@@ -1,20 +1,21 @@
-import java.rmi.*;
-import java.rmi.server.*;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 
-public class Server  {
+public class Server {
     public static void main(String[] args) {
-        try{
-            // khai báo đối tượng thuộc lớp ClientImpl
-            ClientImpl c =  new ClientImpl();
-            System.out.println("Success!");
-            // Khai báo đối tượng c có khả năng remote
-            UnicastRemoteObject.exportObject(c);
-            // đăng ký đối tượng c lên registry
-            Naming.bind("rmi://192.168.0.102/Client", c);
-            System.out.println("Registered!");
-        }
-        catch (Exception e){
-            System.out.println("Error:" + e);
+        try {
+            // Khởi tạo registry trên cổng 1099
+            Registry registry = LocateRegistry.createRegistry(1099);
+
+            // Khởi tạo đối tượng remote
+            ClientImpl c = new ClientImpl();
+
+            // Bind đối tượng vào registry
+            registry.rebind("Client", c);
+
+            System.out.println("Server is running...");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }
