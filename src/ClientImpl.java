@@ -19,4 +19,14 @@ public class ClientImpl extends UnicastRemoteObject implements ClientInterface {
     public List<String> getClientList() throws RemoteException {
         return new ArrayList<>(clientRegistry.keySet());
     }
+
+    @Override
+    public String getClientIP(String clientName) throws RemoteException {
+        String ip = clientRegistry.get(clientName);
+        if (ip == null) {
+            throw new RemoteException("Client not found: " + clientName);
+        }
+        return ip;
+    }
+
 }

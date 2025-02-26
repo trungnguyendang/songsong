@@ -147,23 +147,38 @@ public class Client {
                         jlFileName.setText("Please choose a file to send first!");
                     } else {
                         try {
+                            // Lấy tên client được chọn từ danh sách
+                            String selectedClient = jListClients.getSelectedValue();
+                            if(selectedClient == null || selectedClient.trim().isEmpty()){
+                                JOptionPane.showMessageDialog(jFrame, "Please select a recipient client from the list!", "Error", JOptionPane.ERROR_MESSAGE);
+                                return;
+                            }
+                            // Lấy địa chỉ IP của client được chọn thông qua RMI
+                            String recipientAddress = c.getClientIP(selectedClient);
+
+                            // Đọc nội dung file cần gửi
                             FileInputStream fileInputStream = new FileInputStream(fileToSend[0].getAbsolutePath());
                             byte[] fileBytes = new byte[(int) fileToSend[0].length()];
                             fileInputStream.read(fileBytes);
                             String fileName = fileToSend[0].getName();
                             byte[] fileNameBytes = fileName.getBytes();
-                            // Ở đây, ví dụ gửi file đến localhost. Bạn có thể mở rộng để chọn client từ danh sách.
-                            Socket socket = new Socket("localhost", 1234);
+
+                            // Tạo kết nối Socket đến client nhận (theo IP lấy được)
+                            Socket socket = new Socket(recipientAddress, 1234);
                             DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
+
+                            // Gửi dữ liệu: độ dài tên file, tên file, độ dài file, nội dung file
                             dataOutputStream.writeInt(fileNameBytes.length);
                             dataOutputStream.write(fileNameBytes);
                             dataOutputStream.writeInt(fileBytes.length);
                             dataOutputStream.write(fileBytes);
+
                             dataOutputStream.close();
                             socket.close();
-                            jlFileName.setText("File sent successfully!");
+                            jlFileName.setText("File sent successfully to " + selectedClient + "!");
                         } catch (IOException ex) {
                             ex.printStackTrace();
+                            JOptionPane.showMessageDialog(jFrame, "File sending failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                         }
                     }
                 }
@@ -184,6 +199,48 @@ public class Client {
                     }
                 }
             });
+            //check tên trùng, nếu có thì raise error (để sau)
+//            jbRegister.addActionListener(new ActionListener() {
+//                @Override
+//                public void actionPerformed(ActionEvent actionEvent) {
+//                    String userName = tfUserName.getText().trim();
+//                    if (userName.isEmpty()) {
+//                        JOptionPane.showMessageDialog(jFrame, "Please enter your name!", "Error", JOptionPane.ERROR_MESSAGE);
+//                        return;
+//                    }
+//
+//                    // Lấy danh sách client từ server để đảm bảo dữ liệu mới nhất
+//                    try {
+//                        List<String> currentClients = c.getClientList();
+//                        boolean exists = false;
+//                        // Kiểm tra xem tên đã có trong danh sách hay chưa
+//                        for (String client : currentClients) {
+//                            if (client.equalsIgnoreCase(userName)) {
+//                                exists = true;
+//                                break;
+//                            }
+//                        }
+//                        if (exists) {
+//                            JOptionPane.showMessageDialog(jFrame, "Client name already exists!", "Error", JOptionPane.ERROR_MESSAGE);
+//                        } else {
+//                            // Lấy IP của máy client
+//                            String ip = InetAddress.getLocalHost().getHostAddress();
+//                            // Đăng ký tên client lên server qua RMI
+//                            c.registerClient(userName, ip);
+//                            // Refresh danh sách client
+//                            currentClients = c.getClientList();
+//                            clientListModel.clear();
+//                            for (String client : currentClients) {
+//                                clientListModel.addElement(client);
+//                            }
+//                            JOptionPane.showMessageDialog(jFrame, "Registered successfully as " + userName, "Success", JOptionPane.INFORMATION_MESSAGE);
+//                        }
+//                    } catch (Exception ex) {
+//                        ex.printStackTrace();
+//                        JOptionPane.showMessageDialog(jFrame, "Registration failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+//                    }
+//                }
+//            });
 
             // Khi chọn một client từ danh sách, tự động cập nhật vào ô text (ở đây ta dùng tfUserName để hiển thị tên đã chọn – bạn có thể tạo ô riêng nếu muốn)
             jListClients.addListSelectionListener(e -> {
@@ -195,8 +252,8 @@ public class Client {
             });
 
             // Thêm các thành phần vào frame.
-            jFrame.add(jpRegister);
             jFrame.add(jlTitle);
+            jFrame.add(jpRegister);
             jFrame.add(jlFileName);
             jFrame.add(jpButton);
             jFrame.add(jlAvailableClients);
