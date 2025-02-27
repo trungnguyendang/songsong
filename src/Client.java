@@ -199,6 +199,23 @@ public class Client {
                     }
                 }
             });
+            jFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override
+                public void windowClosing(java.awt.event.WindowEvent e) {
+                    try {
+                        String clientName = tfUserName.getText().trim();
+                        if (!clientName.isEmpty()) {
+                            c.deregisterClient(clientName);
+                            System.out.println("Client deregistered: " + clientName);
+                        }
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    } finally {
+                        System.exit(0);
+                    }
+                }
+            });
+
             //check tên trùng, nếu có thì raise error (để sau)
 //            jbRegister.addActionListener(new ActionListener() {
 //                @Override

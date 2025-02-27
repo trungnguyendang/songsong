@@ -29,4 +29,11 @@ public class ClientImpl extends UnicastRemoteObject implements ClientInterface {
         return ip;
     }
 
+    @Override
+    public void deregisterClient(String clientName) throws RemoteException {
+        clientRegistry.remove(clientName);
+        System.out.println("Client deregistered: " + clientName);
+    }
+
+
 }

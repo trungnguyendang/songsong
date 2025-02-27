@@ -6,4 +6,5 @@ public interface ClientInterface extends Remote {
     void registerClient(String clientName, String ip) throws RemoteException;
     List<String> getClientList() throws RemoteException;
     String getClientIP(String clientName) throws RemoteException;
+    void deregisterClient(String clientName) throws RemoteException;
 }
