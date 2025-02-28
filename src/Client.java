@@ -5,34 +5,14 @@ import java.util.List;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
 
 public class Client {
 
-    public static void startTCPServer() {
-        try (ServerSocket serverSocket = new ServerSocket(5000)) {
-            System.out.println("TCP Server started...");
-            while (true) {
-                Socket socket = serverSocket.accept();
-                System.out.println("Received ping from: " + socket.getInetAddress().getHostAddress());
-                socket.close();
-            }
-        } catch (Exception e) {
-            System.err.println("TCP Server error: " + e);
-        }
-    }
-
-    // Hàm gửi ping (nếu cần sử dụng).
-    public static void sendPing(String ip, int port) {
-        try (Socket socket = new Socket(ip, port)) {
-            System.out.println("Ping sent to " + ip);
-        } catch (Exception e) {
-            System.err.println("Ping failed: " + e);
-        }
-    }
+    // (Phần gửi file, đăng ký,... đã được cài đặt trong code của bạn)
 
     public static void main(String[] args) {
         try {
@@ -42,18 +22,21 @@ public class Client {
 
             final File[] fileToSend = new File[1];
 
+            // Tạo danh sách để lưu các file nhận được
+            ArrayList<MyFile> receivedFiles = new ArrayList<>();
+            DefaultListModel<String> receivedFileListModel = new DefaultListModel<>();
+
             // Tạo JFrame chính cho giao diện Swing
             JFrame jFrame = new JFrame("This is Client");
-            jFrame.setSize(550, 750);
+            jFrame.setSize(550, 900);
             jFrame.setLayout(new BoxLayout(jFrame.getContentPane(), BoxLayout.Y_AXIS));
             jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-            // Tiêu đề cho file sender
+            // Tiêu đề
             JLabel jlTitle = new JLabel("Client's File Sender");
             jlTitle.setFont(new Font("Arial", Font.BOLD, 25));
             jlTitle.setBorder(new EmptyBorder(20, 0, 10, 0));
             jlTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-
 
             // Panel đăng ký tên người dùng
             JPanel jpRegister = new JPanel();
@@ -73,7 +56,6 @@ public class Client {
             jpRegister.add(Box.createRigidArea(new Dimension(0,10)));
             jpRegister.add(jbRegister);
 
-
             // Label hiển thị thông tin file được chọn
             JLabel jlFileName = new JLabel("Choose a file to send.");
             jlFileName.setFont(new Font("Arial", Font.BOLD, 20));
@@ -92,7 +74,7 @@ public class Client {
             jpButton.add(jbSendFile);
             jpButton.add(jbChooseFile);
 
-            // Panel và JList để hiển thị danh sách các client available
+            // Panel và JList hiển thị danh sách các client available
             JLabel jlAvailableClients = new JLabel("List of available Clients:");
             jlAvailableClients.setFont(new Font("Arial", Font.BOLD, 20));
             jlAvailableClients.setBorder(new EmptyBorder(20, 0, 10, 0));
@@ -106,7 +88,36 @@ public class Client {
             jbRefreshClients.setFont(new Font("Arial", Font.BOLD, 16));
             jbRefreshClients.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-            // Action cho nút Register: đăng ký tên của người dùng lên server.
+            // Panel và JList để hiển thị danh sách file nhận được (các file có thể tải)
+            JLabel jlReceivedFiles = new JLabel("Files received from other users:");
+            jlReceivedFiles.setFont(new Font("Arial", Font.BOLD, 20));
+            jlReceivedFiles.setBorder(new EmptyBorder(20, 0, 10, 0));
+            jlReceivedFiles.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JList<String> jListReceivedFiles = new JList<>(receivedFileListModel);
+            jListReceivedFiles.setFont(new Font("Arial", Font.PLAIN, 18));
+            JScrollPane scrollReceivedFiles = new JScrollPane(jListReceivedFiles);
+            scrollReceivedFiles.setPreferredSize(new Dimension(300, 150));
+            scrollReceivedFiles.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+            // Panel download (nếu muốn, thêm ô nhập tên file để download)
+            JPanel downloadPanel = new JPanel();
+            downloadPanel.setLayout(new BoxLayout(downloadPanel, BoxLayout.Y_AXIS));
+            downloadPanel.setBorder(new EmptyBorder(20, 0, 10, 0));
+            JLabel jlDownload = new JLabel("Enter file name to download:");
+            jlDownload.setFont(new Font("Arial", Font.BOLD, 20));
+            jlDownload.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JTextField tfDownloadFileName = new JTextField();
+            tfDownloadFileName.setMaximumSize(new Dimension(300, 30));
+            tfDownloadFileName.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JButton jbDownloadFile = new JButton("Download File");
+            jbDownloadFile.setFont(new Font("Arial", Font.BOLD, 16));
+            jbDownloadFile.setAlignmentX(Component.CENTER_ALIGNMENT);
+            downloadPanel.add(jlDownload);
+            downloadPanel.add(tfDownloadFileName);
+            downloadPanel.add(Box.createRigidArea(new Dimension(0,10)));
+            downloadPanel.add(jbDownloadFile);
+
+            // Action cho nút Register
             jbRegister.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -126,20 +137,24 @@ public class Client {
                 }
             });
 
-            // Action cho nút Choose File
+            // Action cho nút Choose File: chọn file cần gửi từ "Client/Directory"
             jbChooseFile.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    JFileChooser jFileChooser = new JFileChooser();
-                    jFileChooser.setDialogTitle("Choose a file to send.");
+                    JFileChooser jFileChooser = new JFileChooser(new File("Client/Directory"));
+                    jFileChooser.setDialogTitle("Choose a file to send from Client/Directory.");
                     if (jFileChooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
                         fileToSend[0] = jFileChooser.getSelectedFile();
-                        jlFileName.setText("The file you want to send is: " + fileToSend[0].getName());
+                        if (!fileToSend[0].exists()) {
+                            JOptionPane.showMessageDialog(jFrame, "Selected file does not exist in Client/Directory!", "Error", JOptionPane.ERROR_MESSAGE);
+                        } else {
+                            jlFileName.setText("The file you want to send is: " + fileToSend[0].getName());
+                        }
                     }
                 }
             });
 
-            // Action cho nút Send File
+            // Action cho nút Send File: gửi file đến client được chọn
             jbSendFile.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -147,33 +162,26 @@ public class Client {
                         jlFileName.setText("Please choose a file to send first!");
                     } else {
                         try {
-                            // Lấy tên client được chọn từ danh sách
                             String selectedClient = jListClients.getSelectedValue();
-                            if(selectedClient == null || selectedClient.trim().isEmpty()){
+                            if (selectedClient == null || selectedClient.trim().isEmpty()) {
                                 JOptionPane.showMessageDialog(jFrame, "Please select a recipient client from the list!", "Error", JOptionPane.ERROR_MESSAGE);
                                 return;
                             }
-                            // Lấy địa chỉ IP của client được chọn thông qua RMI
                             String recipientAddress = c.getClientIP(selectedClient);
-
-                            // Đọc nội dung file cần gửi
-                            FileInputStream fileInputStream = new FileInputStream(fileToSend[0].getAbsolutePath());
+                            FileInputStream fis = new FileInputStream(fileToSend[0].getAbsolutePath());
                             byte[] fileBytes = new byte[(int) fileToSend[0].length()];
-                            fileInputStream.read(fileBytes);
+                            fis.read(fileBytes);
                             String fileName = fileToSend[0].getName();
                             byte[] fileNameBytes = fileName.getBytes();
 
-                            // Tạo kết nối Socket đến client nhận (theo IP lấy được)
-                            Socket socket = new Socket(recipientAddress, 1234);
-                            DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
-
-                            // Gửi dữ liệu: độ dài tên file, tên file, độ dài file, nội dung file
-                            dataOutputStream.writeInt(fileNameBytes.length);
-                            dataOutputStream.write(fileNameBytes);
-                            dataOutputStream.writeInt(fileBytes.length);
-                            dataOutputStream.write(fileBytes);
-
-                            dataOutputStream.close();
+                            // Kết nối đến daemon của client đích (giả sử daemon chạy trên cổng 5000)
+                            Socket socket = new Socket(recipientAddress, 5000);
+                            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                            dos.writeInt(fileNameBytes.length);
+                            dos.write(fileNameBytes);
+                            dos.writeInt(fileBytes.length);
+                            dos.write(fileBytes);
+                            dos.close();
                             socket.close();
                             jlFileName.setText("File sent successfully to " + selectedClient + "!");
                         } catch (IOException ex) {
@@ -199,6 +207,99 @@ public class Client {
                     }
                 }
             });
+
+            // Action cho nút Download File (sử dụng ô nhập trong downloadPanel)
+            jbDownloadFile.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    String downloadFileName = tfDownloadFileName.getText().trim();
+                    if (downloadFileName.isEmpty()) {
+                        JOptionPane.showMessageDialog(jFrame, "Please enter a file name to download!", "Error", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    File downloadDir = new File("Client/Download");
+                    if (!downloadDir.exists()) {
+                        downloadDir.mkdirs();
+                    }
+                    File targetFile = new File(downloadDir, downloadFileName);
+                    if (targetFile.exists()) {
+                        JOptionPane.showMessageDialog(jFrame, "File already exists in Client/Download folder!", "Info", JOptionPane.INFORMATION_MESSAGE);
+                        return;
+                    }
+                    String selectedClient = jListClients.getSelectedValue();
+                    if (selectedClient == null || selectedClient.trim().isEmpty()) {
+                        JOptionPane.showMessageDialog(jFrame, "Please select a client to download from!", "Error", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    try {
+                        String recipientAddress = c.getClientIP(selectedClient);
+                        Socket socket = new Socket(recipientAddress, 5000);
+                        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+                        DataInputStream dis = new DataInputStream(socket.getInputStream());
+                        byte[] downloadFileNameBytes = downloadFileName.getBytes();
+                        dos.writeInt(downloadFileNameBytes.length);
+                        dos.write(downloadFileNameBytes);
+
+                        int fileLength = dis.readInt();
+                        if (fileLength <= 0) {
+                            JOptionPane.showMessageDialog(jFrame, "File not found on selected client!", "Error", JOptionPane.ERROR_MESSAGE);
+                            dos.close();
+                            dis.close();
+                            socket.close();
+                            return;
+                        }
+                        byte[] fileBytes = new byte[fileLength];
+                        dis.readFully(fileBytes);
+
+                        try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                            fos.write(fileBytes);
+                        }
+                        JOptionPane.showMessageDialog(jFrame, "File downloaded successfully:\n" + targetFile.getAbsolutePath(), "Success", JOptionPane.INFORMATION_MESSAGE);
+                        dos.close();
+                        dis.close();
+                        socket.close();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        JOptionPane.showMessageDialog(jFrame, "Download failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+
+            // Khi chọn một file trong danh sách file nhận được, hiển thị hộp thoại hỏi download
+            jListReceivedFiles.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2) {
+                        int index = jListReceivedFiles.locationToIndex(e.getPoint());
+                        if (index >= 0) {
+                            MyFile selectedFile = receivedFiles.get(index);
+                            int choice = JOptionPane.showConfirmDialog(jFrame,
+                                    "Do you want to download " + selectedFile.getName() + "?",
+                                    "Download Confirmation", JOptionPane.YES_NO_OPTION);
+                            if (choice == JOptionPane.YES_OPTION) {
+                                File downloadDir = new File("Client/Download");
+                                if (!downloadDir.exists()) {
+                                    downloadDir.mkdirs();
+                                }
+                                File fileToSave = new File(downloadDir, selectedFile.getName());
+                                try (FileOutputStream fos = new FileOutputStream(fileToSave)) {
+                                    fos.write(selectedFile.getData());
+                                    JOptionPane.showMessageDialog(jFrame,
+                                            "File downloaded successfully at:\n" + fileToSave.getAbsolutePath(),
+                                            "Success", JOptionPane.INFORMATION_MESSAGE);
+                                } catch (IOException ex) {
+                                    ex.printStackTrace();
+                                    JOptionPane.showMessageDialog(jFrame,
+                                            "Download failed: " + ex.getMessage(),
+                                            "Error", JOptionPane.ERROR_MESSAGE);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Thêm WindowListener để deregister khi đóng ứng dụng
             jFrame.addWindowListener(new java.awt.event.WindowAdapter() {
                 @Override
                 public void windowClosing(java.awt.event.WindowEvent e) {
@@ -216,58 +317,6 @@ public class Client {
                 }
             });
 
-            //check tên trùng, nếu có thì raise error (để sau)
-//            jbRegister.addActionListener(new ActionListener() {
-//                @Override
-//                public void actionPerformed(ActionEvent actionEvent) {
-//                    String userName = tfUserName.getText().trim();
-//                    if (userName.isEmpty()) {
-//                        JOptionPane.showMessageDialog(jFrame, "Please enter your name!", "Error", JOptionPane.ERROR_MESSAGE);
-//                        return;
-//                    }
-//
-//                    // Lấy danh sách client từ server để đảm bảo dữ liệu mới nhất
-//                    try {
-//                        List<String> currentClients = c.getClientList();
-//                        boolean exists = false;
-//                        // Kiểm tra xem tên đã có trong danh sách hay chưa
-//                        for (String client : currentClients) {
-//                            if (client.equalsIgnoreCase(userName)) {
-//                                exists = true;
-//                                break;
-//                            }
-//                        }
-//                        if (exists) {
-//                            JOptionPane.showMessageDialog(jFrame, "Client name already exists!", "Error", JOptionPane.ERROR_MESSAGE);
-//                        } else {
-//                            // Lấy IP của máy client
-//                            String ip = InetAddress.getLocalHost().getHostAddress();
-//                            // Đăng ký tên client lên server qua RMI
-//                            c.registerClient(userName, ip);
-//                            // Refresh danh sách client
-//                            currentClients = c.getClientList();
-//                            clientListModel.clear();
-//                            for (String client : currentClients) {
-//                                clientListModel.addElement(client);
-//                            }
-//                            JOptionPane.showMessageDialog(jFrame, "Registered successfully as " + userName, "Success", JOptionPane.INFORMATION_MESSAGE);
-//                        }
-//                    } catch (Exception ex) {
-//                        ex.printStackTrace();
-//                        JOptionPane.showMessageDialog(jFrame, "Registration failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-//                    }
-//                }
-//            });
-
-            // Khi chọn một client từ danh sách, tự động cập nhật vào ô text (ở đây ta dùng tfUserName để hiển thị tên đã chọn – bạn có thể tạo ô riêng nếu muốn)
-            jListClients.addListSelectionListener(e -> {
-                String selectedClient = jListClients.getSelectedValue();
-                if (selectedClient != null) {
-                    // Ví dụ: Hiển thị tên client được chọn vào một JOptionPane
-                    JOptionPane.showMessageDialog(jFrame, "Selected client: " + selectedClient);
-                }
-            });
-
             // Thêm các thành phần vào frame.
             jFrame.add(jlTitle);
             jFrame.add(jpRegister);
@@ -276,12 +325,46 @@ public class Client {
             jFrame.add(jlAvailableClients);
             jFrame.add(scrollClients);
             jFrame.add(jbRefreshClients);
+            jFrame.add(Box.createRigidArea(new Dimension(0,20)));
+            jFrame.add(jlReceivedFiles);
+            jFrame.add(scrollReceivedFiles);
+            jFrame.add(Box.createRigidArea(new Dimension(0,20)));
+            jFrame.add(downloadPanel);
             jFrame.setVisible(true);
 
-            // Khởi động TCP server để nhận ping từ các client khác.
-            new Thread(Client::startTCPServer).start();
+            // Khởi động TCP server để nhận file từ các client khác (chạy trên cổng 5000)
+            new Thread(() -> {
+                try (ServerSocket serverSocket = new ServerSocket(5000)) {
+                    System.out.println("File Receiver (daemon) started on port 5000...");
+                    while (true) {
+                        Socket socket = serverSocket.accept();
+                        DataInputStream dis = new DataInputStream(socket.getInputStream());
+                        int fileNameLength = dis.readInt();
+                        if (fileNameLength > 0) {
+                            byte[] fileNameBytes = new byte[fileNameLength];
+                            dis.readFully(fileNameBytes);
+                            String fileName = new String(fileNameBytes);
+                            int fileContentLength = dis.readInt();
+                            if (fileContentLength > 0) {
+                                byte[] fileContentBytes = new byte[fileContentLength];
+                                dis.readFully(fileContentBytes);
+                                int fileId = receivedFiles.size();
+                                MyFile newFile = new MyFile(fileId, fileName, fileContentBytes, getFileExtension(fileName));
+                                receivedFiles.add(newFile);
+                                SwingUtilities.invokeLater(() -> {
+                                    receivedFileListModel.addElement(fileName);
+                                });
+                                System.out.println("Received file: " + fileName);
+                            }
+                        }
+                        socket.close();
+                    }
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            }).start();
 
-            // Ban đầu làm mới danh sách client
+            // Ban đầu làm mới danh sách client từ server
             List<String> clients = c.getClientList();
             clientListModel.clear();
             for (String client : clients) {
@@ -289,6 +372,15 @@ public class Client {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    public static String getFileExtension(String fileName) {
+        int i = fileName.lastIndexOf('.');
+        if (i > 0) {
+            return fileName.substring(i + 1);
+        } else {
+            return "No extension found.";
         }
     }
 }
