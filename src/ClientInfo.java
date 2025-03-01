@@ -6,14 +6,13 @@ public class ClientInfo implements Serializable {
     private String clientId;
     private String ipAddress;
     private int port;
-    private int currentLoad;
     private long lastHeartbeat;
+    private int activeConnections = 0;
     
-    public ClientInfo(String clientId, String ipAddress, int port, int currentLoad) {
+    public ClientInfo(String clientId, String ipAddress, int port) {
         this.clientId = clientId;
         this.ipAddress = ipAddress;
         this.port = port;
-        this.currentLoad = currentLoad;
         this.lastHeartbeat = System.currentTimeMillis();
     }
     
@@ -29,20 +28,20 @@ public class ClientInfo implements Serializable {
         return port;
     }
     
-    public int getCurrentLoad() {
-        return currentLoad;
-    }
-    
-    public void setCurrentLoad(int currentLoad) {
-        this.currentLoad = currentLoad;
-    }
-    
     public long getLastHeartbeat() {
         return lastHeartbeat;
     }
     
     public void setLastHeartbeat(long lastHeartbeat) {
         this.lastHeartbeat = lastHeartbeat;
+    }
+    
+    public int getActiveConnections() {
+        return activeConnections;
+    }
+    
+    public void setActiveConnections(int activeConnections) {
+        this.activeConnections = activeConnections;
     }
     
     @Override
