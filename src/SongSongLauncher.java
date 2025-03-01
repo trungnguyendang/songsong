@@ -1,5 +1,7 @@
 import java.awt.*;
 import java.io.File;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
@@ -63,16 +65,43 @@ public class SongSongLauncher extends JFrame {
     
     private void startDirectoryServer() {
         try {
+            // Kiểm tra xem có Directory Server nào đang chạy không bằng cách thử kết nối đến RMI Registry
+            try {
+                Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+                DirectoryService existingService = (DirectoryService) registry.lookup("DirectoryService");
+                
+                // Nếu đến được đây, có nghĩa là Directory đã tồn tại
+                JOptionPane.showMessageDialog(this, 
+                    "Directory Server is already running!", 
+                    "Warning", JOptionPane.WARNING_MESSAGE);
+                return;
+            } catch (Exception e) {
+                // Exception xảy ra nghĩa là không có Directory Server nào đang chạy, tiếp tục tạo mới
+            }
+            
+            // Tạo DirectoryServer mới
             SwingUtilities.invokeLater(() -> new DirectoryServer());
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Error starting Directory Server: " + e.getMessage(),
-                                         "Error", JOptionPane.ERROR_MESSAGE);
+                                        "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
     
     private void startClient() {
         try {
-            // Show client setup dialog to get clientId and directoryHost
+            // Kiểm tra xem Directory Server đã chạy chưa
+            try {
+                Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+                DirectoryService directoryService = (DirectoryService) registry.lookup("DirectoryService");
+            } catch (Exception e) {
+                // Nếu không kết nối được đến Directory Server, hiển thị thông báo
+                JOptionPane.showMessageDialog(this, 
+                    "Directory Server is not running. Please start it first!", 
+                    "Warning", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            
+            // Nếu Directory Server đang chạy, tiếp tục tạo Client
             JTextField clientIdField = new JTextField("Client" + (int)(Math.random() * 1000));
             JTextField directoryHostField = new JTextField("localhost");
             

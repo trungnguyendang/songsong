@@ -15,6 +15,10 @@ public class DirectoryServiceImpl extends UnicastRemoteObject implements Directo
     private final long CLIENT_TIMEOUT_MS = 60000; // 1 minute timeout
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
+    public void clearActivityLog() {
+        activityLog.clear();
+    }
+
     public DirectoryServiceImpl() throws RemoteException {
         super();
         log("Directory Service started");
@@ -195,6 +199,7 @@ public class DirectoryServiceImpl extends UnicastRemoteObject implements Directo
         System.out.println("[Directory] " + logEntry);
     }
     
+    // Phương thức checkClientStatus đã được sửa:
     private void checkClientStatus() {
         long currentTime = System.currentTimeMillis();
         List<String> inactiveClients = new ArrayList<>();
@@ -205,13 +210,15 @@ public class DirectoryServiceImpl extends UnicastRemoteObject implements Directo
             }
         }
         
-        // Remove inactive clients
-        for (String clientId : inactiveClients) {
-            try {
-                log("Client timed out: " + clientId);
-                unregisterClient(clientId);
-            } catch (RemoteException e) {
-                e.printStackTrace();
+        // Loại bỏ các client không hoạt động, chỉ log nếu có client nào hết hạn
+        if (!inactiveClients.isEmpty()) {
+            for (String clientId : inactiveClients) {
+                try {
+                    log("Client timed out: " + clientId);
+                    unregisterClient(clientId);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }

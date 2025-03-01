@@ -9,7 +9,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -26,10 +25,13 @@ public class Client extends JFrame {
     private final ExecutorService fragmentExecutor = Executors.newCachedThreadPool();
     private int activeConnections = 0;
     private volatile boolean running = true;
+    private boolean registeredWithDirectory = false;
+    private boolean lastHeartbeatSuccessful = true;
     
     // GUI Components
     private JLabel statusLabel;
     private DefaultListModel<String> fileListModel;
+    private JList<String> fileList;
     private JPanel downloadPanel;
     private JComboBox<String> fileComboBox;
     private JList<String> sourcesList;
@@ -61,15 +63,16 @@ public class Client extends JFrame {
             // Initialize GUI
             initializeGUI();
             
+            // Start server TRƯỚC
+            startServer();
+            
             // Scan files
             scanFiles();
             
-            // Start server
-            startServer();
-            
-            // Register with directory
+            // ĐĂNG KÝ SAU KHI đã có thông tin file
             List<String> fileNames = new ArrayList<>(availableFiles.keySet());
             directoryService.registerClient(clientId, ipAddress, port, fileNames);
+            registeredWithDirectory = true;
             
             // Schedule heartbeat
             scheduler.scheduleAtFixedRate(this::sendHeartbeat, 15, 15, TimeUnit.SECONDS);
@@ -98,7 +101,7 @@ public class Client extends JFrame {
     
     private void initializeGUI() {
         setSize(900, 700);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -121,15 +124,26 @@ public class Client extends JFrame {
         leftPanel.setBorder(BorderFactory.createTitledBorder("My Files"));
         
         fileListModel = new DefaultListModel<>();
-        JList<String> fileList = new JList<>(fileListModel);
+        fileList = new JList<>(fileListModel);
         fileList.setFont(new Font("Monospaced", Font.PLAIN, 14));
         JScrollPane fileScrollPane = new JScrollPane(fileList);
         
         JButton addFileButton = new JButton("Add File");
         addFileButton.addActionListener(e -> addFile());
         
+        JButton deleteFileButton = new JButton("Delete File");
+        deleteFileButton.addActionListener(e -> deleteSelectedFile());
+        
+        JButton refreshFilesButton = new JButton("Refresh");
+        refreshFilesButton.addActionListener(e -> scanFiles());
+        
+        JPanel fileButtonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        fileButtonsPanel.add(addFileButton);
+        fileButtonsPanel.add(deleteFileButton);
+        fileButtonsPanel.add(refreshFilesButton);
+        
         leftPanel.add(fileScrollPane, BorderLayout.CENTER);
-        leftPanel.add(addFileButton, BorderLayout.SOUTH);
+        leftPanel.add(fileButtonsPanel, BorderLayout.SOUTH);
         
         // Center Panel - Download
         JPanel centerPanel = new JPanel(new BorderLayout(5, 5));
@@ -244,13 +258,15 @@ public class Client extends JFrame {
             });
         }
         
-        // Update directory service
-        try {
-            List<String> fileNames = new ArrayList<>(availableFiles.keySet());
-            directoryService.updateClientFiles(clientId, fileNames);
-            log("Files updated: " + fileNames.size() + " files");
-        } catch (Exception e) {
-            log("Error updating file list: " + e.getMessage());
+        // Update directory service only if already registered
+        if (registeredWithDirectory) {
+            try {
+                List<String> fileNames = new ArrayList<>(availableFiles.keySet());
+                directoryService.updateClientFiles(clientId, fileNames);
+                log("Files updated: " + fileNames.size() + " files");
+            } catch (Exception e) {
+                log("Error updating file list: " + e.getMessage());
+            }
         }
     }
     
@@ -313,6 +329,43 @@ public class Client extends JFrame {
         }
     }
     
+    private void deleteSelectedFile() {
+        String selectedFile = fileList.getSelectedValue();
+        if (selectedFile == null) {
+            JOptionPane.showMessageDialog(this, "Please select a file to delete", 
+                                        "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        int confirm = JOptionPane.showConfirmDialog(this, 
+            "Are you sure you want to delete " + selectedFile + "?", 
+            "Confirm Delete", 
+            JOptionPane.YES_NO_OPTION);
+        
+        if (confirm == JOptionPane.YES_OPTION) {
+            File fileToDelete = new File(clientFolder, selectedFile);
+            if (fileToDelete.exists() && fileToDelete.delete()) {
+                // Remove from availableFiles map
+                availableFiles.remove(selectedFile);
+                
+                // Remove from GUI list
+                fileListModel.removeElement(selectedFile);
+                
+                // Update directory
+                try {
+                    directoryService.removeClientFile(clientId, selectedFile);
+                    log("File deleted: " + selectedFile);
+                } catch (Exception e) {
+                    log("Error updating directory after file deletion: " + e.getMessage());
+                }
+            } else {
+                log("Error deleting file: " + selectedFile);
+                JOptionPane.showMessageDialog(this, "Error deleting file", 
+                                            "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+    
     private void startServer() {
         try {
             serverSocket = new ServerSocket(port);
@@ -337,6 +390,7 @@ public class Client extends JFrame {
                                          "Server Error", JOptionPane.ERROR_MESSAGE);
         }
     }
+    
     private void handleClientRequest(Socket socket) {
         try {
             DataInputStream dis = new DataInputStream(socket.getInputStream());
@@ -459,19 +513,20 @@ public class Client extends JFrame {
         setDownloadPanelEnabled(false);
         progressBar.setValue(0);
         
+        // Create DownloadManager
+        DownloadManager downloadManager = new DownloadManager(
+            clientId, 
+            clientFolder, 
+            directoryService,
+            progress -> SwingUtilities.invokeLater(() -> progressBar.setValue(progress)),
+            message -> log(message)
+        );
+        
         // Start download in background
-        new SwingWorker<Boolean, Integer>() {
+        new SwingWorker<Boolean, Void>() {
             @Override
             protected Boolean doInBackground() throws Exception {
-                return downloadFile(fileName, selectedSources, numFragments);
-            }
-            
-            @Override
-            protected void process(List<Integer> chunks) {
-                if (!chunks.isEmpty()) {
-                    int progress = chunks.get(chunks.size() - 1);
-                    progressBar.setValue(progress);
-                }
+                return downloadManager.downloadFile(fileName, selectedSources, numFragments);
             }
             
             @Override
@@ -506,168 +561,6 @@ public class Client extends JFrame {
         }.execute();
     }
     
-    private boolean downloadFile(String fileName, List<String> selectedSources, int numFragments) throws Exception {
-        log("Starting download of " + fileName + " from " + selectedSources.size() + " sources");
-        
-        // Get client info for selected sources
-        Map<String, ClientInfo> allSourcesMap = directoryService.getClientsWithFile(fileName);
-        Map<String, ClientInfo> selectedSourcesMap = new HashMap<>();
-        
-        for (String sourceId : selectedSources) {
-            ClientInfo info = allSourcesMap.get(sourceId);
-            if (info != null) {
-                selectedSourcesMap.put(sourceId, info);
-            }
-        }
-        
-        if (selectedSourcesMap.isEmpty()) {
-            log("No available sources for file: " + fileName);
-            return false;
-        }
-        
-        // Log download start
-        directoryService.logDownloadStart(clientId, fileName, selectedSources);
-        
-        // Get file size from first source
-        ClientInfo firstSource = selectedSourcesMap.values().iterator().next();
-        long fileSize = getFileSize(firstSource, fileName);
-        
-        if (fileSize <= 0) {
-            log("Could not determine file size");
-            return false;
-        }
-        
-        log("File size: " + formatFileSize(fileSize));
-        
-        // Calculate fragments
-        List<Fragment> fragments = calculateFragments(fileSize, numFragments);
-        
-        // Create output file
-        File outputFile = new File(clientFolder, fileName);
-        RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
-        raf.setLength(fileSize);
-        
-        // Create download tasks
-        ExecutorService executor = Executors.newFixedThreadPool(fragments.size());
-        List<Future<FragmentResult>> futures = new ArrayList<>();
-        Map<Integer, FragmentStats> fragmentStats = new HashMap<>();
-        
-        // Distribute fragments among sources (round-robin)
-        List<ClientInfo> sourcesList = new ArrayList<>(selectedSourcesMap.values());
-        
-        for (int i = 0; i < fragments.size(); i++) {
-            Fragment fragment = fragments.get(i);
-            
-            // Select source (round-robin)
-            ClientInfo source = sourcesList.get(i % sourcesList.size());
-            String sourceId = source.getClientId();
-            
-            // Create download task
-            FragmentDownloader downloader = new FragmentDownloader(
-                i, sourceId, source, fileName, fragment.start, fragment.end, true);
-            
-            futures.add(executor.submit(downloader));
-        }
-        
-        // Wait for all fragments and write to file
-        long totalBytesDownloaded = 0;
-        boolean allSuccessful = true;
-        long startTime = System.currentTimeMillis();
-        
-        for (int i = 0; i < fragments.size(); i++) {
-            Fragment fragment = fragments.get(i);
-            Future<FragmentResult> future = futures.get(i);
-            
-            try {
-                FragmentResult result = future.get();
-                
-                fragmentStats.put(i, new FragmentStats(
-                    result.sourceClient,
-                    result.downloadTime,
-                    result.success,
-                    result.errorMessage
-                ));
-                
-                if (result.success) {
-                    raf.seek(fragment.start);
-                    raf.write(result.data);
-                    totalBytesDownloaded += result.data.length;
-                    
-                    // Update progress
-                    int progress = (int)((totalBytesDownloaded * 100) / fileSize);
-                    final int progressFinal = progress;
-                    SwingUtilities.invokeLater(() -> {
-                        progressBar.setValue(progressFinal);
-                    });
-                    log("Fragment " + i + " downloaded from " + result.sourceClient + 
-                        " in " + result.downloadTime + "ms");
-                } else {
-                    allSuccessful = false;
-                    log("Fragment " + i + " failed: " + result.errorMessage);
-                }
-            } catch (Exception e) {
-                allSuccessful = false;
-                log("Error downloading fragment " + i + ": " + e.getMessage());
-                fragmentStats.put(i, new FragmentStats(
-                    "unknown", 0, false, e.getMessage()
-                ));
-            }
-        }
-        
-        long totalTime = System.currentTimeMillis() - startTime;
-        raf.close();
-        executor.shutdown();
-        
-        // Log download completion
-        directoryService.logDownloadComplete(clientId, fileName, allSuccessful, totalTime, fragmentStats);
-        
-        if (allSuccessful) {
-            log("Download completed successfully in " + totalTime + "ms");
-            // Add file to available files
-            availableFiles.put(fileName, outputFile);
-            return true;
-        } else {
-            log("Download failed");
-            outputFile.delete();
-            return false;
-        }
-    }
-    
-    private long getFileSize(ClientInfo client, String fileName) {
-        try (Socket socket = new Socket(client.getIpAddress(), client.getPort())) {
-            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-            DataInputStream dis = new DataInputStream(socket.getInputStream());
-            
-            dos.writeUTF("FILE_INFO");
-            dos.writeUTF(fileName);
-            
-            boolean exists = dis.readBoolean();
-            if (exists) {
-                return dis.readLong();
-            }
-        } catch (IOException e) {
-            log("Error getting file size: " + e.getMessage());
-        }
-        return -1;
-    }
-    
-    private List<Fragment> calculateFragments(long fileSize, int numFragments) {
-        List<Fragment> fragments = new ArrayList<>();
-        long fragmentSize = fileSize / numFragments;
-        long remainder = fileSize % numFragments;
-        
-        long position = 0;
-        for (int i = 0; i < numFragments; i++) {
-            long currentSize = fragmentSize + (i < remainder ? 1 : 0);
-            if (currentSize > 0) {
-                fragments.add(new Fragment(position, position + currentSize - 1));
-                position += currentSize;
-            }
-        }
-        
-        return fragments;
-    }
-    
     private void setDownloadPanelEnabled(boolean enabled) {
         for (Component comp : downloadPanel.getComponents()) {
             if (comp instanceof JComponent) {
@@ -679,8 +572,18 @@ public class Client extends JFrame {
     private void sendHeartbeat() {
         try {
             directoryService.heartbeat(clientId);
+            
+            // Log chỉ khi trạng thái thay đổi từ lỗi sang thành công
+            if (!lastHeartbeatSuccessful) {
+                log("Reconnected to directory service");
+                lastHeartbeatSuccessful = true;
+            }
         } catch (Exception e) {
-            log("Error sending heartbeat: " + e.getMessage());
+            // Log chỉ khi đây là lỗi đầu tiên
+            if (lastHeartbeatSuccessful) {
+                log("Error sending heartbeat: " + e.getMessage());
+                lastHeartbeatSuccessful = false;
+            }
         }
     }
     
@@ -744,104 +647,31 @@ public class Client extends JFrame {
             fragmentExecutor.shutdown();
             scheduler.shutdown();
             
+            // Xóa thư mục client
+            File clientDir = new File(clientFolder);
+            if (clientDir.exists()) {
+                deleteDirectory(clientDir);
+                log("Client directory deleted: " + clientFolder);
+            }
+            
             log("Shutdown complete");
         } catch (Exception e) {
             log("Error during shutdown: " + e.getMessage());
         } finally {
-            System.exit(0);
+            // Thay thế System.exit(0) bằng việc đóng frame
+            dispose();
         }
     }
     
-    // Inner classes
-    private class Fragment {
-        public long start;
-        public long end;
-        
-        public Fragment(long start, long end) {
-            this.start = start;
-            this.end = end;
-        }
-    }
-    
-    private class FragmentDownloader implements Callable<FragmentResult> {
-        private int fragmentId;
-        private String sourceId;
-        private ClientInfo source;
-        private String fileName;
-        private long startByte;
-        private long endByte;
-        private boolean useCompression;
-        
-        public FragmentDownloader(int fragmentId, String sourceId, ClientInfo source, 
-                                String fileName, long startByte, long endByte, boolean useCompression) {
-            this.fragmentId = fragmentId;
-            this.sourceId = sourceId;
-            this.source = source;
-            this.fileName = fileName;
-            this.startByte = startByte;
-            this.endByte = endByte;
-            this.useCompression = useCompression;
-        }
-        
-        @Override
-        public FragmentResult call() {
-            long startTime = System.currentTimeMillis();
-            try {
-                Socket socket = new Socket(source.getIpAddress(), source.getPort());
-                socket.setSoTimeout(10000); // 10 second timeout
-                
-                DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                DataInputStream dis = new DataInputStream(socket.getInputStream());
-                
-                // Send fragment request
-                dos.writeUTF("DOWNLOAD_FRAGMENT");
-                dos.writeUTF(fileName);
-                dos.writeLong(startByte);
-                dos.writeLong(endByte);
-                dos.writeBoolean(useCompression);
-                
-                // Check if file exists on source
-                boolean fileExists = dis.readBoolean();
-                if (!fileExists) {
-                    long downloadTime = System.currentTimeMillis() - startTime;
-                    return new FragmentResult(fragmentId, sourceId, downloadTime, false, null, "File not found on source");
-                }
-                
-                // Read fragment data
-                int dataLength = dis.readInt();
-                byte[] data = new byte[dataLength];
-                dis.readFully(data);
-                
-                // Decompress if needed
-                if (useCompression) {
-                    data = decompressData(data);
-                }
-                
-                socket.close();
-                
-                long downloadTime = System.currentTimeMillis() - startTime;
-                return new FragmentResult(fragmentId, sourceId, downloadTime, true, data, null);
-                
-            } catch (Exception e) {
-                long downloadTime = System.currentTimeMillis() - startTime;
-                return new FragmentResult(fragmentId, sourceId, downloadTime, false, null, e.getMessage());
+    // Phương thức hỗ trợ xóa thư mục và tất cả nội dung bên trong
+    private boolean deleteDirectory(File directoryToBeDeleted) {
+        File[] allContents = directoryToBeDeleted.listFiles();
+        if (allContents != null) {
+            for (File file : allContents) {
+                deleteDirectory(file);
             }
         }
-        
-        private byte[] decompressData(byte[] compressedData) throws IOException {
-            ByteArrayInputStream bais = new ByteArrayInputStream(compressedData);
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            
-            try (GZIPInputStream gzipIn = new GZIPInputStream(bais)) {
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = gzipIn.read(buffer)) > 0) {
-                    baos.write(buffer, 0, len);
-                }
-            }
-            
-            return baos.toByteArray();
-        }
+        return directoryToBeDeleted.delete();
     }
     
     public static void main(String[] args) {
