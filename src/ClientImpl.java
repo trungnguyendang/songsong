@@ -35,5 +35,10 @@ public class ClientImpl extends UnicastRemoteObject implements ClientInterface {
         System.out.println("Client deregistered: " + clientName);
     }
 
+    @Override
+    public List<String> getClientsWithFile(String fileName) {
+        return List.of();
+    }
+
 
 }

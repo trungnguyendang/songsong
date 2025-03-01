@@ -27,7 +27,7 @@ public class Client {
             DefaultListModel<String> receivedFileListModel = new DefaultListModel<>();
 
             // Tạo JFrame chính cho giao diện Swing
-            JFrame jFrame = new JFrame("This is Client");
+            JFrame jFrame = new JFrame("This is Client2");
             jFrame.setSize(550, 900);
             jFrame.setLayout(new BoxLayout(jFrame.getContentPane(), BoxLayout.Y_AXIS));
             jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -103,17 +103,9 @@ public class Client {
             JPanel downloadPanel = new JPanel();
             downloadPanel.setLayout(new BoxLayout(downloadPanel, BoxLayout.Y_AXIS));
             downloadPanel.setBorder(new EmptyBorder(20, 0, 10, 0));
-            JLabel jlDownload = new JLabel("Enter file name to download:");
-            jlDownload.setFont(new Font("Arial", Font.BOLD, 20));
-            jlDownload.setAlignmentX(Component.CENTER_ALIGNMENT);
-            JTextField tfDownloadFileName = new JTextField();
-            tfDownloadFileName.setMaximumSize(new Dimension(300, 30));
-            tfDownloadFileName.setAlignmentX(Component.CENTER_ALIGNMENT);
             JButton jbDownloadFile = new JButton("Download File");
             jbDownloadFile.setFont(new Font("Arial", Font.BOLD, 16));
             jbDownloadFile.setAlignmentX(Component.CENTER_ALIGNMENT);
-            downloadPanel.add(jlDownload);
-            downloadPanel.add(tfDownloadFileName);
             downloadPanel.add(Box.createRigidArea(new Dimension(0,10)));
             downloadPanel.add(jbDownloadFile);
 
@@ -174,8 +166,8 @@ public class Client {
                             String fileName = fileToSend[0].getName();
                             byte[] fileNameBytes = fileName.getBytes();
 
-                            // Kết nối đến daemon của client đích (giả sử daemon chạy trên cổng 5000)
-                            Socket socket = new Socket(recipientAddress, 5000);
+                            // Kết nối đến daemon của client đích (giả sử daemon chạy trên cổng 5001)
+                            Socket socket = new Socket(recipientAddress, 5001);
                             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                             dos.writeInt(fileNameBytes.length);
                             dos.write(fileNameBytes);
@@ -212,53 +204,35 @@ public class Client {
             jbDownloadFile.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    String downloadFileName = tfDownloadFileName.getText().trim();
-                    if (downloadFileName.isEmpty()) {
-                        JOptionPane.showMessageDialog(jFrame, "Please enter a file name to download!", "Error", JOptionPane.ERROR_MESSAGE);
+                    // Lấy chỉ số của mục được chọn trong danh sách file nhận được
+                    int selectedIndex = jListReceivedFiles.getSelectedIndex();
+                    if (selectedIndex < 0) {
+                        JOptionPane.showMessageDialog(jFrame, "Please select a file from the list to download!", "Error", JOptionPane.ERROR_MESSAGE);
                         return;
                     }
+                    // Lấy đối tượng MyFile tương ứng từ danh sách receivedFiles
+                    MyFile selectedFile = receivedFiles.get(selectedIndex);
+
+                    // Xác định thư mục lưu file download
                     File downloadDir = new File("Client/Download");
                     if (!downloadDir.exists()) {
                         downloadDir.mkdirs();
                     }
-                    File targetFile = new File(downloadDir, downloadFileName);
+                    File targetFile = new File(downloadDir, selectedFile.getName());
                     if (targetFile.exists()) {
                         JOptionPane.showMessageDialog(jFrame, "File already exists in Client/Download folder!", "Info", JOptionPane.INFORMATION_MESSAGE);
                         return;
                     }
-                    String selectedClient = jListClients.getSelectedValue();
-                    if (selectedClient == null || selectedClient.trim().isEmpty()) {
-                        JOptionPane.showMessageDialog(jFrame, "Please select a client to download from!", "Error", JOptionPane.ERROR_MESSAGE);
-                        return;
-                    }
-                    try {
-                        String recipientAddress = c.getClientIP(selectedClient);
-                        Socket socket = new Socket(recipientAddress, 5000);
-                        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-                        DataInputStream dis = new DataInputStream(socket.getInputStream());
-                        byte[] downloadFileNameBytes = downloadFileName.getBytes();
-                        dos.writeInt(downloadFileNameBytes.length);
-                        dos.write(downloadFileNameBytes);
 
-                        int fileLength = dis.readInt();
-                        if (fileLength <= 0) {
-                            JOptionPane.showMessageDialog(jFrame, "File not found on selected client!", "Error", JOptionPane.ERROR_MESSAGE);
-                            dos.close();
-                            dis.close();
-                            socket.close();
-                            return;
-                        }
-                        byte[] fileBytes = new byte[fileLength];
-                        dis.readFully(fileBytes);
+                    new Thread(() -> {
+                        DownloadManager.downloadFileParallel(String.valueOf(selectedIndex), targetFile.getAbsolutePath(), c);
+                    }).start();
 
-                        try (FileOutputStream fos = new FileOutputStream(targetFile)) {
-                            fos.write(fileBytes);
-                        }
+                    // Lưu file xuống ổ đĩa
+                    try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                        fos.write(selectedFile.getData());
                         JOptionPane.showMessageDialog(jFrame, "File downloaded successfully:\n" + targetFile.getAbsolutePath(), "Success", JOptionPane.INFORMATION_MESSAGE);
-                        dos.close();
-                        dis.close();
-                        socket.close();
-                    } catch (Exception ex) {
+                    } catch (IOException ex) {
                         ex.printStackTrace();
                         JOptionPane.showMessageDialog(jFrame, "Download failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                     }
@@ -269,7 +243,7 @@ public class Client {
             jListReceivedFiles.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
-                    if (e.getClickCount() == 2) {
+                if (e.getClickCount() == 2) {
                         int index = jListReceivedFiles.locationToIndex(e.getPoint());
                         if (index >= 0) {
                             MyFile selectedFile = receivedFiles.get(index);
