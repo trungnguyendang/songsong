@@ -14,17 +14,31 @@ out/
 bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
-.idea/
 
 ### NetBeans ###
 /nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
 
 ### VS Code ###
 .vscode/
 
 ### Mac OS ###
 .DS_Store
+
+### 🚀 Bổ sung để chỉ track file .java và bỏ qua file biên dịch ###
+
+# Bỏ qua tất cả file trong src/
+src/*
+
+# Nhưng cho phép track tất cả file .java trong src/
+!src/**/*.java
+
+# Bỏ qua tất cả file .class (file biên dịch)
+*.class
+
+# Bỏ qua thư mục build output
+build/
+target/
