@@ -43,11 +43,11 @@ public class Daemon {
             Registry registry = LocateRegistry.getRegistry(directoryHost, 1099);
             directoryService = (DirectoryService) registry.lookup("DirectoryService");
             
-            // Scan for available files
-            scanFiles();
-            
             // Initialize GUI
             initializeGUI();
+
+            // Scan for available files
+            scanFiles();
             
             // Start the daemon server
             startServer();
