@@ -142,7 +142,120 @@ public class DownloadManager {
             return false;
         }
     }
-    
+
+    public boolean downloadFileSequential(String fileName, List<String> selectedSources, int numFragments) throws Exception {
+        logCallback.log("Starting sequential download of " + fileName + " from " + selectedSources.size() + " sources");
+
+        // Get client info for selected sources
+        Map<String, ClientInfo> allSourcesMap = directoryService.getClientsWithFile(fileName);
+        Map<String, ClientInfo> selectedSourcesMap = new HashMap<>();
+
+        for (String sourceId : selectedSources) {
+            ClientInfo info = allSourcesMap.get(sourceId);
+            if (info != null) {
+                selectedSourcesMap.put(sourceId, info);
+            }
+        }
+
+        if (selectedSourcesMap.isEmpty()) {
+            logCallback.log("No available sources for file: " + fileName);
+            return false;
+        }
+
+        // Log download start
+        directoryService.logDownloadStart(clientId, fileName, selectedSources);
+
+        // Get file size from first source
+        ClientInfo firstSource = selectedSourcesMap.values().iterator().next();
+        long fileSize = getFileSize(firstSource, fileName);
+
+        if (fileSize <= 0) {
+            logCallback.log("Could not determine file size");
+            return false;
+        }
+
+        logCallback.log("File size: " + formatFileSize(fileSize));
+
+        // Calculate fragments
+        List<Fragment> fragments = calculateFragments(fileSize, numFragments);
+
+        // Create output file and set its length
+        File outputFile = new File(clientFolder, fileName);
+        RandomAccessFile raf = new RandomAccessFile(outputFile, "rw");
+        raf.setLength(fileSize);
+
+        // Instead of using ExecutorService for parallel tasks,
+        // download each fragment one after another (sequentially)
+        long totalBytesDownloaded = 0;
+        boolean allSuccessful = true;
+        long startTime = System.currentTimeMillis();
+        Map<Integer, FragmentStats> fragmentStats = new HashMap<>();
+
+        // Distribute fragments among sources (round-robin)
+        List<ClientInfo> sourcesList = new ArrayList<>(selectedSourcesMap.values());
+
+        for (int i = 0; i < fragments.size(); i++) {
+            Fragment fragment = fragments.get(i);
+
+            // Select source (round-robin)
+            ClientInfo source = sourcesList.get(i % sourcesList.size());
+            String sourceId = source.getClientId();
+
+            // Create a FragmentDownloader for the fragment
+            FragmentDownloader downloader = new FragmentDownloader(
+                    i, sourceId, source, fileName, fragment.start, fragment.end, true);
+
+            try {
+                // Call the downloader synchronously instead of submitting to a thread pool
+                FragmentResult result = downloader.call();
+
+                fragmentStats.put(i, new FragmentStats(
+                        result.sourceClient,
+                        result.downloadTime,
+                        result.success,
+                        result.errorMessage
+                ));
+
+                if (result.success) {
+                    raf.seek(fragment.start);
+                    raf.write(result.data);
+                    totalBytesDownloaded += result.data.length;
+
+                    // Update progress based on total bytes downloaded
+                    int progress = (int)((totalBytesDownloaded * 100) / fileSize);
+                    progressCallback.updateProgress(progress);
+
+                    logCallback.log("Fragment " + i + " downloaded from " + result.sourceClient +
+                            " in " + result.downloadTime + "ms");
+                } else {
+                    allSuccessful = false;
+                    logCallback.log("Fragment " + i + " failed: " + result.errorMessage);
+                }
+            } catch (Exception e) {
+                allSuccessful = false;
+                logCallback.log("Error downloading fragment " + i + ": " + e.getMessage());
+                fragmentStats.put(i, new FragmentStats(
+                        "unknown", 0, false, e.getMessage()
+                ));
+            }
+        }
+
+        long totalTime = System.currentTimeMillis() - startTime;
+        raf.close();
+
+        // Log download completion
+        directoryService.logDownloadComplete(clientId, fileName, allSuccessful, totalTime, fragmentStats);
+
+        if (allSuccessful) {
+            logCallback.log("Download completed successfully in " + totalTime + "ms");
+            return true;
+        } else {
+            logCallback.log("Download failed");
+            outputFile.delete();
+            return false;
+        }
+    }
+
     private long getFileSize(ClientInfo client, String fileName) {
         try (Socket socket = new Socket(client.getIpAddress(), client.getPort())) {
             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());

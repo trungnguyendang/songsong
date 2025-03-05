@@ -178,8 +178,11 @@ public class Client extends JFrame {
         progressBar.setStringPainted(true);
         
         JButton downloadButton = new JButton("Download");
+        JButton downloadButtonSeq = new JButton("Download Sequence");
         downloadButton.addActionListener(e -> startDownload());
-        
+        downloadButtonSeq.addActionListener(e -> startDownloadSeq());
+
+
         downloadPanel.add(fileSelectPanel);
         downloadPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         downloadPanel.add(sourcesPanel);
@@ -189,6 +192,7 @@ public class Client extends JFrame {
         downloadPanel.add(progressBar);
         downloadPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         downloadPanel.add(downloadButton);
+        downloadPanel.add(downloadButtonSeq);
         
         centerPanel.add(downloadPanel, BorderLayout.CENTER);
         
@@ -560,7 +564,82 @@ public class Client extends JFrame {
             }
         }.execute();
     }
-    
+    private void startDownloadSeq() {
+        String fileName = (String) fileComboBox.getSelectedItem();
+        if (fileName == null || fileName.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please select a file to download",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Check if we already have the file
+        if (availableFiles.containsKey(fileName)) {
+            JOptionPane.showMessageDialog(this, "You already have this file",
+                    "Information", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // Get selected sources. For sequential download, we use only one source.
+        List<String> selectedSources = sourcesList.getSelectedValuesList();
+        if (selectedSources.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please select at least one source",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        int numFragments = (Integer) fragmentsSpinner.getValue();
+        
+        // Disable download panel and reset progress bar
+        setDownloadPanelEnabled(false);
+        progressBar.setValue(0);
+
+        // Create DownloadManager instance
+        DownloadManager downloadManager = new DownloadManager(
+                clientId,
+                clientFolder,
+                directoryService,
+                progress -> SwingUtilities.invokeLater(() -> progressBar.setValue(progress)),
+                message -> log(message)
+        );
+
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() throws Exception {
+                return downloadManager.downloadFileSequential(fileName, selectedSources, numFragments);            }
+
+            @Override
+            protected void done() {
+                try {
+                    Boolean success = get();
+                    if (success) {
+                        JOptionPane.showMessageDialog(Client.this,
+                                "File downloaded successfully (sequential): " + fileName,
+                                "Download Complete",
+                                JOptionPane.INFORMATION_MESSAGE);
+
+                        // Refresh file list
+                        scanFiles();
+                    } else {
+                        JOptionPane.showMessageDialog(Client.this,
+                                "Download failed (sequential): " + fileName,
+                                "Download Error",
+                                JOptionPane.ERROR_MESSAGE);
+                    }
+                } catch (Exception e) {
+                    log("Download error: " + e.getMessage());
+                    JOptionPane.showMessageDialog(Client.this,
+                            "Download error: " + e.getMessage(),
+                            "Download Error",
+                            JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    setDownloadPanelEnabled(true);
+                    progressBar.setValue(0);
+                }
+            }
+        }.execute();
+    }
+
+
     private void setDownloadPanelEnabled(boolean enabled) {
         for (Component comp : downloadPanel.getComponents()) {
             if (comp instanceof JComponent) {
